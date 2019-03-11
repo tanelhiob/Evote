@@ -19,71 +19,79 @@ module Http =
         ChoiceToken: string
     }
 
-    let saveVoter (table: CloudTable) vote = async {
-        let voterAttributes = Map [("VoterToken", new EntityProperty(vote.VoterToken))]
-        let voterEntity = new DynamicTableEntity("", vote.Voter, null, voterAttributes)
-
-        let operation = TableOperation.Insert(voterEntity)
-        return! table.ExecuteAsync(operation) |> Async.AwaitTask
-    }
-        
-    let saveChoice (table: CloudTable) vote = async {
-        let id = Guid.NewGuid().ToString()
-        let choiceAttributes = Map [
-            ("ChoiceToken", new EntityProperty(vote.ChoiceToken))
+    let save (table: CloudTable) (vote: Vote) = async {
+        let id = vote.Voter
+        let voterAttributes = Map [
+            ("VoterToken", new EntityProperty(vote.VoterToken))
             ("Choice", new EntityProperty(vote.Choice))
+            ("ChoiceToken", new EntityProperty(vote.ChoiceToken))
         ]
-        let choiceEntity = new DynamicTableEntity("", id, null, choiceAttributes)
 
-        let operation = TableOperation.Insert(choiceEntity)
+        let voterEntity = new DynamicTableEntity("", id, null, voterAttributes)
+
+        let operation = TableOperation.InsertOrReplace(voterEntity)
         return! table.ExecuteAsync(operation) |> Async.AwaitTask
     }
 
     [<FunctionName("CastVote")>]
     let castVote ([<HttpTrigger(AuthorizationLevel.Anonymous, "post")>] httpRequest: HttpRequest,
-                  [<Table("choices")>] choicesTable: CloudTable,
-                  [<Table("voters")>] votersTable: CloudTable,
+                  [<Table("votes")>] table: CloudTable,               
                   logger: ILogger) =
         async {
-                  
             let! json = httpRequest.ReadAsStringAsync() |> Async.AwaitTask
             let vote = JsonConvert.DeserializeObject<Vote>(json)
-
-            let! tableResults =  Async.Parallel [
-                saveVoter votersTable vote
-                saveChoice choicesTable vote
-            ]
+            let! tableResults = save table vote
 
             return new OkResult()
         }
         |> Async.StartAsTask
     
-    let loadTable table = async {
+    let loadTable (table: CloudTable) = 
+        let tableQuery = new TableQuery()
         
-        ignore()
-    }
+        let executeQuery (token: TableContinuationToken) =
+            match token with 
+            | null -> None
+            | _ -> let segmentedResult = table.ExecuteQuerySegmentedAsync(tableQuery, token) |> Async.AwaitTask |> Async.RunSynchronously
+                   Some (segmentedResult.Results, segmentedResult.ContinuationToken)
+        
+        let toVote (entity: DynamicTableEntity) =         
+            {
+                Voter = entity.RowKey
+                VoterToken = entity.Properties.["VoterToken"].StringValue
+                Choice = entity.Properties.["Choice"].StringValue
+                ChoiceToken = entity.Properties.["ChoiceToken"].StringValue
+            }
+
+        Seq.unfold executeQuery (new TableContinuationToken())
+        |> Seq.concat
+        |> Seq.map toVote
+        |> Seq.toList
 
     type Choice = {
         Value: string
         Token: string
     }
+    let Choice vote = { Value = vote.Choice; Token = vote.ChoiceToken }
 
     type Voter = {
         Name: string
         Token: string
     }
+    let Voter vote = { Name = vote.Voter; Token = vote.VoterToken }
+        
 
     [<FunctionName("GetVotes")>]
     let getVotes ([<HttpTrigger(AuthorizationLevel.Anonymous, "get")>] httpRequest: HttpRequest,
-                  [<Table("choices")>] choicesTable: CloudTable,
-                  [<Table("voters")>] votersTable: CloudTable,
+                  [<Table("votes")>] table: CloudTable,
                   logger: ILogger) =
         async {
-             let! choiceEntities = loadTable choicesTable
-             let! voterEntities = loadTable votersTable
+             let votes = loadTable table
+             
+             let voters, choices =
+                votes
+                |> List.fold (fun (voters, choices) vote -> Voter vote :: voters, Choice vote:: choices ) ([], [])
 
-             let result = [choiceEntities; voterEntities]
-
-             return new OkObjectResult(result)
+             return new OkObjectResult(voters |> List.sortBy (fun x -> x.Name), choices |> List.sortBy (fun x -> x.Value))
         }
         |> Async.StartAsTask

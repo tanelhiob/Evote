@@ -13,4 +13,3 @@ module Business =
         |> Array.concat
         |> rsa.ComputeHash
     
-    
