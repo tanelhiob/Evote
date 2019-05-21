@@ -3,7 +3,6 @@
 open Microsoft.WindowsAzure.Storage.Table
 open System
 open FSharp.Control
-open Microsoft.WindowsAzure.Storage.Table
 
 module Domain =
 
@@ -24,47 +23,69 @@ module Domain =
         ChoiceToken: string
     }
     
+    let private saveEntityAsync (table: CloudTable) (rowKey: string) (partitionKey: string) (properties: Map<string, EntityProperty>) = async {
+        let dynamicTableEntity = new DynamicTableEntity(partitionKey, rowKey, null, properties)
+        let operation = TableOperation.InsertOrReplace(dynamicTableEntity)
+        do! table.ExecuteAsync(operation) |> Async.AwaitTask |> Async.Ignore
+    }
+    
+    let private executeQueryAsync (table: CloudTable) (query: TableQuery) (token: TableContinuationToken) = async {
+        if token = null then
+            return None
+        else
+            let! segmentedResult = table.ExecuteQuerySegmentedAsync(query, token) |> Async.AwaitTask
+            return Some (segmentedResult.Results, segmentedResult.ContinuationToken)
+    }
+
+    let private loadEntitiesAsync<'TResult> (table: CloudTable) (partitionKey: string) (mapper: DynamicTableEntity -> 'TResult) = async {
+        let query = new TableQuery()
+        query.FilterString <- TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, partitionKey)
+
+        return!
+            AsyncSeq.unfoldAsync (executeQueryAsync table query) (new TableContinuationToken())
+            |> AsyncSeq.concatSeq
+            |> AsyncSeq.map mapper
+            |> AsyncSeq.toListAsync
+    }
+
+    let private loadEntityAsync<'TResult> (table: CloudTable) (rowKey: string) (partitionKey: string) (mapper: DynamicTableEntity -> 'TResult) = async {
+        let operation = TableOperation.Retrieve(partitionKey, rowKey)
+        let! result = table.ExecuteAsync(operation) |> Async.AwaitTask
+
+        if result.Result = null then
+            return None
+        else
+            let dynamicTableEntity = result.Result :?> DynamicTableEntity
+            let result = mapper dynamicTableEntity
+            return Some result
+    }
+
     let saveCampaignAsync (table: CloudTable) (campaign: Campaign) = async {
         let rowKey = campaign.Id |> string
         let partitionKey = ""
-        let campaignAttributes = Map [
+        let properties = Map [
             ("Name", new EntityProperty(campaign.Name))
             ("Start", new EntityProperty(new Nullable<DateTimeOffset>(campaign.Start)))
             ("End", new EntityProperty(new Nullable<DateTimeOffset>(campaign.End)))
         ]
 
-        let campaignEntity = new DynamicTableEntity(partitionKey, rowKey, null, campaignAttributes)
-
-        let operation = TableOperation.InsertOrReplace(campaignEntity)
-        return! table.ExecuteAsync(operation) |> Async.AwaitTask
+        do! saveEntityAsync table rowKey partitionKey properties
     }
 
     let saveVoteAsync (table: CloudTable) (vote: Vote) = async {
         let rowKey = vote.Voter
         let partitionKey = vote.CampaignId |> string
-        let voterAttributes = Map [
+        let properties = Map [
             ("VoterToken", new EntityProperty(vote.VoterToken))
             ("Choice", new EntityProperty(vote.Choice))
             ("ChoiceToken", new EntityProperty(vote.ChoiceToken))
         ]
 
-        let voterEntity = new DynamicTableEntity(partitionKey, rowKey, null, voterAttributes)
-
-        let operation = TableOperation.InsertOrReplace(voterEntity)
-        return! table.ExecuteAsync(operation) |> Async.AwaitTask
+        do! saveEntityAsync table rowKey partitionKey properties
     }
     
     let loadCampaignVotesAsync (table: CloudTable) (campaignId: Guid) =  async {
-        let tableQuery = (new TableQuery()).Where(TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, campaignId.ToString()))
-        
-        let executeQueryAsync (token: TableContinuationToken) = async {
-            match token with
-            | null -> return None
-            | _ -> let! segmentedResult = table.ExecuteQuerySegmentedAsync(tableQuery, token) |> Async.AwaitTask
-                   return Some (segmentedResult.Results, segmentedResult.ContinuationToken)
-        }
-        
-        let toVote (entity: DynamicTableEntity) =         
+        let mapper (entity: DynamicTableEntity) =         
             {
                 CampaignId = Guid.Parse entity.PartitionKey
                 Voter = entity.RowKey
@@ -73,24 +94,11 @@ module Domain =
                 ChoiceToken = entity.Properties.["ChoiceToken"].StringValue
             }
 
-        return!
-            AsyncSeq.unfoldAsync executeQueryAsync (new TableContinuationToken())
-            |> AsyncSeq.concatSeq
-            |> AsyncSeq.map toVote
-            |> AsyncSeq.toListAsync
+        return! loadEntitiesAsync table (string campaignId) mapper
     }
 
     let loadCampaignsAsync (table: CloudTable) = async {
-        let tableQuery = new TableQuery()
-
-        let executeQueryAsync (token: TableContinuationToken) = async {
-            match token with
-            | null -> return None
-            | _ -> let! segmentedResult = table.ExecuteQuerySegmentedAsync(tableQuery, token) |> Async.AwaitTask
-                   return Some (segmentedResult.Results, segmentedResult.ContinuationToken)
-        }
-
-        let toCampaign (entity: DynamicTableEntity) =
+        let mapper (entity: DynamicTableEntity) =
             {
                 Id = Guid.Parse entity.RowKey
                 Name = entity.Properties.["Name"].StringValue
@@ -98,28 +106,17 @@ module Domain =
                 End = entity.Properties.["End"].DateTimeOffsetValue.Value
             }
 
-        return!
-            AsyncSeq.unfoldAsync executeQueryAsync (new TableContinuationToken())
-            |> AsyncSeq.concatSeq
-            |> AsyncSeq.map toCampaign
-            |> AsyncSeq.toListAsync
+        return! loadEntitiesAsync table "" mapper
     }
 
     let loadCampaignAsync (table: CloudTable) (campaignId: Guid) = async {
-        let retrievalOperation = TableOperation.Retrieve("", string campaignId)
-        let! tableResult = table.ExecuteAsync(retrievalOperation) |> Async.AwaitTask
+        let mapper (entity: DynamicTableEntity) =
+            {
+                Id = Guid.Parse entity.RowKey
+                Name = entity.Properties.["Name"].StringValue
+                Start = entity.Properties.["Start"].DateTimeOffsetValue.Value
+                End = entity.Properties.["End"].DateTimeOffsetValue.Value
+            }
 
-        if tableResult.HttpStatusCode <> 200 then
-            raise (new Exception("Failed to retrieve campaign"))
-
-        let dynamicTableEntity = tableResult.Result :?> DynamicTableEntity
-
-        let campaign = {
-            Id = Guid.Parse dynamicTableEntity.RowKey
-            Name = dynamicTableEntity.Properties.["Name"].StringValue
-            Start = dynamicTableEntity.Properties.["Start"].DateTimeOffsetValue.Value
-            End = dynamicTableEntity.Properties.["End"].DateTimeOffsetValue.Value
-        }
-
-        return campaign
+        return! loadEntityAsync table (string campaignId) "" mapper
     }
