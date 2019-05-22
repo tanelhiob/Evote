@@ -12,15 +12,19 @@ module Http =
     open System
     open Domain
 
+    let getPostContentAsync<'TResult> (httpRequest: HttpRequest) = async {
+        let! json = httpRequest.ReadAsStringAsync() |> Async.AwaitTask
+        let content = JsonConvert.DeserializeObject<'TResult>(json)
+        return content
+    }
+
     [<FunctionName("CastVote")>]
     let castVote ([<HttpTrigger(AuthorizationLevel.Anonymous, "post")>] httpRequest: HttpRequest,
                   [<Table("evotevotes")>] table: CloudTable,               
                   logger: ILogger) =
         async {
-            let! json = httpRequest.ReadAsStringAsync() |> Async.AwaitTask
-            let vote = JsonConvert.DeserializeObject<Vote>(json)
-            let! tableResults = saveVoteAsync table vote
-
+            let! vote = getPostContentAsync httpRequest
+            do! saveVoteAsync table vote
             return new OkResult()
         }
         |> Async.StartAsTask
@@ -53,11 +57,8 @@ module Http =
                         [<Table("evotecampaigns")>] table: CloudTable,
                         logger: ILogger) =
         async {
-            let! json = httpRequest.ReadAsStringAsync() |> Async.AwaitTask     
-            let campaign = JsonConvert.DeserializeObject<Campaign>(json)
-
-            let! tableResult = saveCampaignAsync table campaign
-            
+            let! campaign = getPostContentAsync httpRequest
+            do! saveCampaignAsync table campaign
             return new OkResult()
         }
         |> Async.StartAsTask
