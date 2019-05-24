@@ -75,7 +75,7 @@ let voteAsync state choice = async {
             ChoiceToken = login.Secret
         }
 
-        if state.Vote.IsSome then
+        if state.Vote.IsSome && state.Vote.Value.CampaignId = campaign.Id then
             printfn "Changing vote from %s to %s" state.Vote.Value.Choice choice
 
         let voteJson = JsonConvert.SerializeObject(vote)
