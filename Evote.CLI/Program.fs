@@ -15,13 +15,16 @@ let (|Guid|_|) (input: string) =
     | (false, _) -> None
 
 let (|Regex|_|) pattern input =
-    let m = Regex.Match(input, pattern)
-    if m.Success then Some(List.tail [ for g in m.Groups -> g.Value ])
+    let matches = Regex.Match(input, pattern)
+    if matches.Success then Some(List.tail [ for g in matches.Groups -> g.Value ])
     else None
+
+let (|Split|) (input: string) =
+    input.Split(" ") |> Array.toList 
 
 [<EntryPoint>]
 let main _ =
-   
+
     let rec handleInputAsync state = async {
         printfn "Awaiting %s command..." (state.Login |> Option.bind (fun login -> Some (login.Name + "'s")) |> Option.defaultValue "your")
         printfn "login; start; list; select; vote; check; exit;"
@@ -34,7 +37,7 @@ let main _ =
             let! state =
                 match input with 
                 | Regex "^login ([a-zA-Z]+)$" [username] -> login state username |> wrapAsync
-                | Regex "^start ([a-zA-Z]+)$" [campaignName] -> startCampaignAsync state campaignName 
+                | Split (command::campaignName::choices) when command = "start" -> startCampaignAsync state campaignName choices
                 | "list" -> listCampaignsAsync |> wrapAsyncWithState state
                 | Regex "^select ([a-z0-9\\-]+)$" [campaignId] ->
                     match campaignId with

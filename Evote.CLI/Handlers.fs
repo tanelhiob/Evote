@@ -3,6 +3,7 @@
 open System
 open Newtonsoft.Json
 open FSharp.Data
+open FSharp.Data.HttpContentTypes
 
 [<CLIMutable>]
 type Vote = {
@@ -22,6 +23,7 @@ type Login = {
 type Campaign = {
     Id: Guid
     Name: string
+    Choices: string list option
 }
 
 type State = {
@@ -48,6 +50,13 @@ type Votes = {
     Voters: Votes_Voter list
 }
 
+let private getResponseResult (httpResponse: HttpResponse) =
+    if httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 300 then
+        match httpResponse.Body with
+        | HttpResponseBody.Text text -> Ok text
+        | _ -> Ok "success"
+    else Error "error"
+            
 let login state name =
     printfn "You are now %s" name
     let login = {
@@ -55,56 +64,62 @@ let login state name =
         Secret = Guid.NewGuid().ToString() }
     { state with Login = Some login }
                
-let voteAsync state choice =
+let voteAsync state choice = async {
     match state with
     | { Login = Some login; Campaign = Some campaign } ->
-        async {
-            let vote = {
-                CampaignId = campaign.Id
-                Voter = login.Name
-                VoterToken = login.Secret
-                Choice = choice
-                ChoiceToken = login.Secret
-            }
-
-            if state.Vote.IsSome then
-                printfn "Changing vote from %s to %s" state.Vote.Value.Choice choice
-
-            let voteJson = JsonConvert.SerializeObject(vote)
-            let body = HttpRequestBody.TextRequest voteJson
-            let url = "http://localhost:7071/api/CastVote"
-            do! Http.AsyncRequestString(url, httpMethod = "POST", body = body) |> Async.Ignore
-
-            return { state with Vote = Some vote }
-        }            
-    | _ -> async {
-            printfn "Login and campaign have to be selected"
-            return state
+        let vote = {
+            CampaignId = campaign.Id
+            Voter = login.Name
+            VoterToken = login.Secret
+            Choice = choice
+            ChoiceToken = login.Secret
         }
 
+        if state.Vote.IsSome then
+            printfn "Changing vote from %s to %s" state.Vote.Value.Choice choice
+
+        let voteJson = JsonConvert.SerializeObject(vote)
+        let body = HttpRequestBody.TextRequest voteJson
+        let url = "http://localhost:7071/api/CastVote"
+
+        let! response = Http.AsyncRequest(url, httpMethod = "POST", body = body)
+
+        printfn "%A" response.Headers
+
+        match getResponseResult response with
+        | Ok text -> printfn "%s" text
+                     return { state with Vote = Some vote }
+        | Error text -> printfn "Voting failed - %s" text
+                        return state
+    | _ ->
+        printfn "Login and campaign have to be selected"
+        return state
+}
+
 let check state = async {
-        match state with 
-        | { Campaign = Some campaign } -> 
-            if state.Vote.IsSome then
-                printfn "You voted for %s" state.Vote.Value.Choice
+    match state with 
+    | { Campaign = Some campaign } -> 
+        if state.Vote.IsSome then
+            printfn "You voted for %s" state.Vote.Value.Choice
 
-            let url = sprintf "http://localhost:7071/api/GetVotes/%A" campaign.Id
-            let! json = Http.AsyncRequestString(url)
+        let url = sprintf "http://localhost:7071/api/GetVotes/%A" campaign.Id
+        let! json = Http.AsyncRequestString(url)
 
-            let votes = JsonConvert.DeserializeObject<Votes>(json)
+        let votes = JsonConvert.DeserializeObject<Votes>(json)
 
-            printfn "%A" votes.Voters
-            printfn "%A" votes.Choices
+        printfn "%A" votes.Voters
+        printfn "%A" votes.Choices
 
-        | _ -> printfn "Campaign has to be selected"
-    }
+    | _ -> printfn "Campaign has to be selected"
+}
 
-let selectCampaignAsync state campaignId = async {
+let selectCampaignAsync state (campaignId: Guid) = async {
     let url = sprintf "http://localhost:7071/api/GetCampaign/%A" campaignId
     let! json = Http.AsyncRequestString (url, httpMethod = HttpMethod.Get)
     let campaign = JsonConvert.DeserializeObject<Campaign>(json)
     
-    printfn "%s is the active campaign" campaign.Name
+    printfn "Selected campaign %s" campaign.Name
+    printfn "%s" (campaign.Choices |> Option.bind (String.concat "; " >> Some) |> Option.defaultValue "open choices")
 
     return { state with Campaign = Some campaign }
 }
@@ -120,18 +135,20 @@ let listCampaignsAsync = async {
         campaigns |> List.iter (fun campaign -> printfn "%s %s" (string campaign.Id) campaign.Name)
 }
 
-let startCampaignAsync state campaignName = async {
+let startCampaignAsync state campaignName (campaignChoices: string list) = async {
     let url = "http://localhost:7071/api/CreateCampaign"
     let campaign = {|
         Id = Guid.NewGuid()
         Name = campaignName
         Start = DateTimeOffset.UtcNow
         End = DateTimeOffset.UtcNow.AddDays 7.0
+        IsPublic = true
+        Choices = campaignChoices |> (function | [] -> None | choices -> Some choices)
     |}
 
     let json = JsonConvert.SerializeObject campaign
     let body = HttpRequestBody.TextRequest json
     let! response = Http.AsyncRequest (url, httpMethod = HttpMethod.Post, body = body)
 
-    return! selectCampaignAsync state (string campaign.Id)
+    return! selectCampaignAsync state campaign.Id
 }

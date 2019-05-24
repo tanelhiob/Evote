@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <Compile Include="Domain.fs" />
+    <Compile Include="Data.fs" />
     <Compile Include="Http.fs" />
     <None Include="host.json" />
     <None Include="local.settings.json" />
@@ -14,9 +15,11 @@
 
   <ItemGroup>
     <PackageReference Include="FSharp.Control.AsyncSeq" Version="2.0.21" />
+    <PackageReference Include="FSharpx.Async" Version="1.13.2" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.Storage" Version="3.0.6" />
     <PackageReference Include="Microsoft.NET.Sdk.Functions" Version="1.0.28" />
   </ItemGroup>
+  
   <ItemGroup>
     <None Update="host.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
