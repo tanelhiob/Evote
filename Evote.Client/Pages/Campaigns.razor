@@ -1,0 +1,30 @@
+﻿@page "/"
+@page "/campaigns"
+@using  Models
+@inject HttpClient HttpClient
+
+@if (_campaigns == null)
+{
+    <div>loading...</div>
+}
+else
+{
+    <ul>
+        @foreach (var campaign in _campaigns)
+        {
+            <li>
+                <NavLink href="@($"campaign/{campaign.Id}")">@campaign.Name</NavLink>
+            </li>
+        }
+    </ul>
+}
+
+@functions {
+
+    private IList<Models.Campaign> _campaigns;
+
+    protected override async Task OnInitAsync()
+    {
+        _campaigns = await HttpClient.GetJsonAsync<List<Models.Campaign>>("http://localhost:49449/fakes/GetCampaigns.json");
+    }
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "id": "0933e733-29d9-42e9-8d6d-2b91428212db",
+    "name": "teine",
+    "start": "2019-05-24T13:50:30.4448383+00:00",
+    "end": "2019-05-31T13:50:30.4446194+00:00",
+    "isPublic": true,
+    "choices": null
+  },
+  {
+    "id": "10b3d12a-2996-45a5-a04c-d518aeb89e91",
+    "name": "topkolm",
+    "start": "2019-05-25T08:35:45.1653692+00:00",
+    "end": "2019-06-01T08:35:45.1653105+00:00",
+    "isPublic": true,
+    "choices": {
+      "case": "Some",
+      "fields": [ [ "tanels", "sanders", "davis", "rainers" ] ]
+    }
+  },
+  {
+    "id": "12c34ebc-5d75-4608-8a43-ac28b2e1945c",
+    "name": "esimene",
+    "start": "2019-05-24T11:27:39.0129884+00:00",
+    "end": "2019-05-31T11:27:39.0113951+00:00",
+    "isPublic": true,
+    "choices": {
+      "case": "Some",
+      "fields": [ [ "yks", "kaks", "kolm" ] ]
+    }
+  }
+]

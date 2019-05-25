@@ -1,0 +1,112 @@
+﻿@page "/campaign/{id:guid}"
+@using Models
+@inject HttpClient HttpClient
+
+@if (_campaign == null)
+{
+    <div>loading...</div>
+}
+else
+{
+    <h3>@_campaign.Name <small>@Id</small></h3>
+    <div><time>@_campaign.Start</time> - <time>@_campaign.End</time></div>
+    <div>@(_campaign.IsPublic ? "public" : "hidden")</div>
+    @if (_campaign.Choices == null)
+    {
+        <div>
+            <input type="text" bind="@ManualChoice" placeholder="your choice"/>
+            <button class="@(CastVoteOperation.Status == OperationStatus.InProgress ? "disabled" : null)" onclick="@(() => VoteAsync(ManualChoice))">Vote</button>
+        </div>
+    }
+    else
+    {
+        <ul>
+            @foreach (var choice in _campaign.Choices.Value)
+            {
+                <li>
+                    <button class="@(CastVoteOperation.Status == OperationStatus.InProgress ? "disabled" : null)" onclick="@(() => VoteAsync(choice))">@choice</button>
+                </li>
+            }
+        </ul>
+    }
+
+    if (CastVoteOperation.Status == OperationStatus.Successful)
+    {
+        <div>Check @CastVoteOperation.Success</div>
+    }
+    else if (CastVoteOperation.Status == OperationStatus.Failed)
+    {
+        <div>Error - @CastVoteOperation.Failure</div>
+    }
+
+    <div>
+        <button onclick="@UpdateVotesAsync">Display results</button>
+        @if (_results != null)
+        {
+            <h4>Voters</h4>
+            foreach (var voter in _results.Voters)
+            {
+                <div>@voter.Name @voter.Token</div>
+            }
+
+            <h4>Choices</h4>
+            foreach (var choice in _results.Choices)
+            {
+                <div>@choice.Value @choice.Token</div>
+            }
+        }
+    </div>
+}
+
+<NavLink href="/">Campaigns</NavLink>
+
+@functions {
+
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private Models.Campaign _campaign;
+    private string ManualChoice;
+    private Operation<Guid, string> CastVoteOperation = new Operation<Guid, string>();
+
+    private VotingResults _results;
+
+    protected override async Task OnInitAsync()
+    {
+        _campaign = await HttpClient.GetJsonAsync<Models.Campaign>("http://localhost:49449/fakes/GetCampaign.json");
+    }
+
+    private async Task VoteAsync(string choice)
+    {
+        Console.WriteLine($"Casting vote {choice}");
+
+        CastVoteOperation.Start();
+
+        var määdžik = Guid.NewGuid();
+
+        var vote = new Vote
+        {
+            CampaignId = Id,
+            Choice = choice,
+            ChoiceToken = määdžik.ToString(),
+            Voter = "anon",
+            VoterToken = määdžik.ToString(),
+        };
+
+        // HttpClient.PostJsonAsync<Vote>("http://localhost:49449/api/castvote", vote);
+        await Task.Delay(1500);
+
+        CastVoteOperation.Complete(määdžik);
+    }
+
+    private async Task UpdateVotesAsync()
+    {
+        _results = await HttpClient.GetJsonAsync<VotingResults>("http://localhost:49449/fakes/GetVotes.json");
+    }
+
+    private class VotingResults
+    {
+        public IList<Voter> Voters { get; set; }
+        public IList<Choice> Choices { get; set; }
+    }
+}
