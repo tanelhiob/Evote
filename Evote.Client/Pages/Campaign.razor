@@ -1,6 +1,8 @@
 ﻿@page "/campaign/{id:guid}"
 @using Models
+@using Services
 @inject HttpClient HttpClient
+@inject IUserService UserService
 
 @if (_campaign == null)
 {
@@ -57,8 +59,6 @@ else
         }
     </div>
 }
-
-<NavLink href="/">Campaigns</NavLink>
 
 @functions {
 
