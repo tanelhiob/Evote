@@ -25,6 +25,6 @@ else
 
     protected override async Task OnInitAsync()
     {
-        _campaigns = await HttpClient.GetJsonAsync<List<Models.Campaign>>("http://localhost:49449/fakes/GetCampaigns.json");
+        _campaigns = await HttpClient.GetJsonAsync<List<Models.Campaign>>("http://localhost:7071/api/GetCampaigns");
     }
 }

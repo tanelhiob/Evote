@@ -26,9 +26,9 @@ let private getPostContentAsync<'TResult> (httpRequest: HttpRequest) = async {
 
 [<FunctionName("CastVote")>]
 let castVote ([<HttpTrigger(AuthorizationLevel.Anonymous, "post")>] httpRequest: HttpRequest,
-                [<Table("evotevotes")>] votesTable: CloudTable,
-                [<Table("evotecampaigns")>] campaignsTable: CloudTable,
-                logger: ILogger) =
+              [<Table("evotevotes")>] votesTable: CloudTable,
+              [<Table("evotecampaigns")>] campaignsTable: CloudTable,
+              logger: ILogger) =
     async {
         let! vote = getPostContentAsync httpRequest
         let! result = castVoteAsync vote (saveVoteAsync votesTable) (loadCampaignAsync campaignsTable)

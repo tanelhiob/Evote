@@ -73,7 +73,7 @@ else
 
     protected override async Task OnInitAsync()
     {
-        _campaign = await HttpClient.GetJsonAsync<Models.Campaign>("http://localhost:49449/fakes/GetCampaign.json");
+        _campaign = await HttpClient.GetJsonAsync<Models.Campaign>($"http://localhost:7071/api/GetCampaign/{Id}");
     }
 
     private async Task VoteAsync(string choice)
@@ -81,6 +81,7 @@ else
         Console.WriteLine($"Casting vote {choice}");
 
         CastVoteOperation.Start();
+        StateHasChanged();
 
         var määdžik = Guid.NewGuid();
 
@@ -93,15 +94,14 @@ else
             VoterToken = määdžik.ToString(),
         };
 
-        // HttpClient.PostJsonAsync<Vote>("http://localhost:49449/api/castvote", vote);
-        await Task.Delay(1500);
+        var result = await HttpClient.PostJsonAsync<Vote>("http://localhost:7071/api/CastVote", vote);
 
         CastVoteOperation.Complete(määdžik);
     }
 
     private async Task UpdateVotesAsync()
     {
-        _results = await HttpClient.GetJsonAsync<VotingResults>("http://localhost:49449/fakes/GetVotes.json");
+        _results = await HttpClient.GetJsonAsync<VotingResults>($"http://localhost:7071/api/GetVotes/{Id}");
     }
 
     private class VotingResults
