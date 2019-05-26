@@ -94,7 +94,7 @@ else
             VoterToken = määdžik.ToString(),
         };
 
-        var result = await HttpClient.PostJsonAsync<Vote>("http://localhost:7071/api/CastVote", vote);
+        await HttpClient.PostJsonAsync("http://localhost:7071/api/CastVote", vote);
 
         CastVoteOperation.Complete(määdžik);
     }

@@ -9,14 +9,27 @@
 }
 else
 {
-    <ul>
-        @foreach (var campaign in _campaigns)
-        {
-            <li>
-                <NavLink href="@($"campaign/{campaign.Id}")">@campaign.Name</NavLink>
-            </li>
-        }
-    </ul>
+    <table class="table table-dark">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Started</th>
+                <th>Expires</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var campaign in _campaigns.OrderBy(c => c.Start))
+            {
+                var isStarted = campaign.Start >= DateTimeOffset.UtcNow;
+
+                <tr>
+                    <td><NavLink href="@($"campaign/{campaign.Id}")">@campaign.Name</NavLink></td>
+                    <td>@(isStarted ? "yes" : "no")</td>
+                    <td>@(campaign.End.ToLocalTime().ToString("dddd, dd MMMM HH:mm:ss"))</td>
+                </tr>
+            }
+        </tbody>
+    </table>
 }
 
 @functions {
